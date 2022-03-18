@@ -7,7 +7,6 @@ import logger
 import argparse
 from drrn import DRRN_Agent
 from vec_env import VecEnv
-from jericho.util import clean
 import random
 
 from scienceworld import ScienceWorldEnv, BufferedHistorySaver
@@ -23,6 +22,11 @@ def configure_logger(log_dir):
     global log
     log = logger.log
 
+def clean(strIn):
+    charsToFilter = ['\t', '\n', '*', '-']
+    for c in charsToFilter:
+        strIn = strIn.replace(c, ' ')
+    return strIn.strip()
 
 
 def evaluate(agent, args, env_step_limit, bufferedHistorySaverEval, extraSaveInfo, nb_episodes=10):    
