@@ -1,4 +1,3 @@
-
 from scienceworld import ScienceWorldEnv
 from multiprocessing import Process, Pipe
 
