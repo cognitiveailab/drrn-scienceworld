@@ -1,4 +1,7 @@
-# Close All
+#
+# If ScienceWorld environments have been left open (from a crash, etc), 
+# this will send close signals to any that exist across a large port range. 
+#
 
 from scienceworld_python_api import VirtualEnv
 jarPath = "virtualenv-scala-assembly-1.0.jar"
