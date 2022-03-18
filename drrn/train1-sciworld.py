@@ -280,8 +280,7 @@ def parse_args():
     parser.add_argument('--embedding_dim', default=128, type=int)
     parser.add_argument('--hidden_dim', default=128, type=int)
 
-    parser.add_argument('--task_idx', default=0, type=int)
-    parser.add_argument('--var_idx', default=0, type=int)
+    parser.add_argument('--task_idx', default=0, type=int)    
     parser.add_argument('--maxHistoriesPerFile', default=1000, type=int)
     parser.add_argument('--historySavePrefix', default='saveout', type=str)
 
@@ -299,8 +298,7 @@ def reinitializeEnv(args, envStepLimit, threadNum):
     taskName = taskNames[args.task_idx]        # Just get first task
 
     maxVariations = env.getMaxVariations(taskName)
-    variationIdx = random.randrange(0, maxVariations)           # Pick a random variation
-    #variationIdx = args.var_idx    ## Variation IDX currently ignored
+    variationIdx = random.randrange(0, maxVariations)           # Pick a random variation    
     print("NOTE: Generating random variation: " + str(variationIdx))
     env.load(taskName, variationIdx, args.simplification_str)
     initialObs, initialDict = env.reset()
@@ -318,38 +316,22 @@ def main():
     ## assert jericho.__version__ == '2.1.0', "This code is designed to be run with Jericho version 2.1.0."
     args = parse_args()
     print(args)
-    configure_logger(args.output_dir)
-    #start_redis()
+    configure_logger(args.output_dir)    
     agent = DRRN_Agent(args)
 
-    ## agent.load(path="logs/", suffixStr="-steps576000-eps3473")
-
-    # Try to load agent
-    #loadPath = "logs2-findcrash4/"
-    #agent.load(loadPath)
-
-    # Jericho initialization
-    #env = JerichoEnv(args.rom_path, args.seed, args.env_step_limit)
-    #envs = VecEnv(args.num_envs, env)
-    #env.create() # Create the environment for evaluation
-
-    # ScienceWorld Initialization?
-    #env = reinitializeEnv(args)
-    #simplificationStr = "openDoors"
+    # Initialize a threaded wrapper for the ScienceWorld environment
     envs = VecEnv(args.num_envs, args)
 
+    # Initialize the save buffers
     taskIdx = args.task_idx
     bufferedHistorySaverTrain = BufferedHistorySaver(filenameOutPrefix = args.historySavePrefix + "-task" + str(taskIdx) + "-train")
     bufferedHistorySaverEval = BufferedHistorySaver(filenameOutPrefix = args.historySavePrefix + "-task" + str(taskIdx) + "-eval")
 
-
+    # Start training
     start = timeit.default_timer()
-
-    print("SimplificationStr: " + str(args.simplification_str))
 
     train(agent, envs, args.max_steps, args.update_freq, args.eval_freq,
           args.checkpoint_freq, args.log_freq, args, bufferedHistorySaverTrain, bufferedHistorySaverEval)
-
 
     end = timeit.default_timer()
     deltaTime = end - start
