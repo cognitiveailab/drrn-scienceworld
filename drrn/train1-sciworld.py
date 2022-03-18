@@ -10,7 +10,7 @@ from vec_env import VecEnv
 from jericho.util import clean
 import random
 
-from scienceworld_python_api import VirtualEnv, BufferedHistorySaver
+from scienceworld import ScienceWorldEnv, BufferedHistorySaver
 from vec_env import resetWithVariation, resetWithVariationTrain, resetWithVariationTest, initializeEnv
 
 
