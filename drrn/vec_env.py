@@ -68,8 +68,6 @@ def resetWithVariationTest(env, simplificationStr):
 
 # Initialize a ScienceWorld environment directly from the API
 def initializeEnv(threadNum, args):    
-    jarPath = "virtualenv-scala-assembly-1.0.jar"
-    #env = VirtualEnv("", jarPath, args.env_step_limit, threadNum)
     env = ScienceWorldEnv("", None, args.env_step_limit, threadNum)
 
     taskNames = env.getTaskNames()    
