@@ -30,8 +30,10 @@ Here:
 - **env_step_limit:** the maximum number of steps to run an environment for, before it times out and resets (100 typical)
 - **eval_freq:** the number of steps between evaluations
 - **eval_set:** which set to perform the evaluations on (dev or test)
-- **historySavePrefix:** the filename prefix for saving the output history files
+- **historySavePrefix:** the filename prefix for saving the output history files, which contain full logs to calculate final scores, plot performance curves, examing action history, etc.
 - **priority_fraction** and **memory_size**: Hyperparameters for the DRRN model (see paper for more information).
+
+This configuration generally takes about 1-2 hours to run (to 10k steps).
 
 ## ScienceWorld Task List
 ```
