@@ -1,94 +1,89 @@
-# Template-DQN and DRRN (Modified for ScienceWorld)
+# DRRN Agent (Modified for ScienceWorld)
 
-This repository contains reference implementations of TDQN and DRRN as mentioned in [Interactive Fiction Games: A Colossal Adventure](https://arxiv.org/abs/1909.05398).
+This repository contains a reference implementation DRRN as mentioned in [Interactive Fiction Games: A Colossal Adventure](https://arxiv.org/abs/1909.05398), that has been modified for use with the [ScienceWorld](https://www.github.com/allenai/ScienceWorld) environment. 
 
-Changelog:
-- Marc: Updates for various improvements/newer library versions
-- Peter: Hackish, single-thread DRRN modification to run with ScienceWorld
-
-Current issues
-- Threads: ScienceWorld API only partially integrated: currently doesn't run more than one thread (if you try this, it may crash)
-- ScienceWorld: Currently (Dec 16th/2021) a bug that prevents 'open door' actions from being in the list of valid actions in the Jericho API, so agents won't be able to successfully complete most tasks.  This should be fixed shortly.
-- ScienceWorld (Electrical conductivity actions): Dec 15th/2021: These were disabled to reduce the action space and increase simulation speed by about 10x.  Should be re-enabled after completed (or, increase the speed of the generateValidActions() call in the API, which is a major bottleneck right now).
-- TDQN: This model hasn't been modified yet.
 
 # Quickstart
 
 Install Dependencies:
 ```bash
 # Clone repository
-git clone https://github.com/cognitiveailab/tdqn-scienceworld.git
-cd tdqn-scienceworld
+git clone https://github.com/cognitiveailab/drrn-scienceworld.git
+cd drrn-scienceworld
 
 # Create conda environment
-conda create --name drrn2 python=3.8
-conda activate drrn2
+conda create --name drrn1 python=3.8
+conda activate drrn1
 pip install -r requirements.txt
 
 ```
 
-An example of training the DRRN model:
+An example of training the DRRN model (using 8 threads, for 10k training steps, evaluating on dev every 1k steps):
 ```bash
 cd drrn
-python3 train1-sciworld.py --num_envs=1 --max_steps=1000 --task_idx=13 --var_idx=0 --env_step_limit=25 --log_freq=10 --eval_freq=250
+python3 train-scienceworld.py --num_envs=8 --max_steps=10000 --task_idx=13 --simplification_str=easy --priority_fraction=0.50 --memory_size=100000 --env_step_limit=100 --eval_freq=1000 --eval_set=dev --historySavePrefix=drrn-task13-results-seed0-dev 
 ```
 Here:
-- **max_steps:** Maximum number of steps to train for
+- **max_steps:** Maximum number of steps to train for (per environment thread)
+- **num_envs:** The number of environment threads to simultaneously use during training (8 is a common number)
 - **task_idx:** The ScienceWorld task index (0-29). *See **task list** below*
-- **var_idx:** The ScienceWorld task variation number
-- **env_step_limit:** the maximum number of steps to run an environment for, before it times out and resets
-- **eval_freq:** the number of steps between evaluations (evaluations are capped at ~200 steps -- this is currently hardcoded, you can change this in the code if needed).
+- **env_step_limit:** the maximum number of steps to run an environment for, before it times out and resets (100 typical)
+- **eval_freq:** the number of steps between evaluations
+- **eval_set:** which set to perform the evaluations on (dev or test)
+- **historySavePrefix:** the filename prefix for saving the output history files
+- **priority_fraction** and **memory_size**: Hyperparameters for the DRRN model (see paper for more information).
 
 ## ScienceWorld Task List
 ```
-TASK LIST:
+TASK LIST: 
     0: 	                                                 task-1-boil  (30 variations)
     1: 	                        task-1-change-the-state-of-matter-of  (30 variations)
     2: 	                                               task-1-freeze  (30 variations)
     3: 	                                                 task-1-melt  (30 variations)
-    4: 	             task-10-measure-melting-point-(known-substance)  (875 variations)
-    5: 	           task-10-measure-melting-point-(unknown-substance)  (12500 variations)
-    6: 	                                     task-10-use-thermometer  (27000 variations)
+    4: 	             task-10-measure-melting-point-(known-substance)  (436 variations)
+    5: 	           task-10-measure-melting-point-(unknown-substance)  (300 variations)
+    6: 	                                     task-10-use-thermometer  (540 variations)
     7: 	                                      task-2-power-component  (20 variations)
     8: 	   task-2-power-component-(renewable-vs-nonrenewable-energy)  (20 variations)
-    9: 	                                   task-2a-test-conductivity  (2000 variations)
-   10: 	             task-2a-test-conductivity-of-unknown-substances  (2000 variations)
+    9: 	                                   task-2a-test-conductivity  (900 variations)
+   10: 	             task-2a-test-conductivity-of-unknown-substances  (600 variations)
    11: 	                                          task-3-find-animal  (300 variations)
    12: 	                                    task-3-find-living-thing  (300 variations)
    13: 	                                task-3-find-non-living-thing  (300 variations)
    14: 	                                           task-3-find-plant  (300 variations)
    15: 	                                           task-4-grow-fruit  (126 variations)
    16: 	                                           task-4-grow-plant  (126 variations)
-   17: 	                                        task-5-chemistry-mix  (4 variations)
-   18: 	                task-5-chemistry-mix-paint-(secondary-color)  (12 variations)
-   19: 	                 task-5-chemistry-mix-paint-(tertiary-color)  (12 variations)
+   17: 	                                        task-5-chemistry-mix  (32 variations)
+   18: 	                task-5-chemistry-mix-paint-(secondary-color)  (36 variations)
+   19: 	                 task-5-chemistry-mix-paint-(tertiary-color)  (36 variations)
    20: 	                             task-6-lifespan-(longest-lived)  (125 variations)
    21: 	         task-6-lifespan-(longest-lived-then-shortest-lived)  (125 variations)
    22: 	                            task-6-lifespan-(shortest-lived)  (125 variations)
    23: 	                               task-7-identify-life-stages-1  (14 variations)
-   24: 	                               task-7-identify-life-stages-2  (14 variations)
+   24: 	                               task-7-identify-life-stages-2  (10 variations)
    25: 	                       task-8-inclined-plane-determine-angle  (168 variations)
    26: 	             task-8-inclined-plane-friction-(named-surfaces)  (1386 variations)
-   27: 	           task-8-inclined-plane-friction-(unnamed-surfaces)  (210 variations)
+   27: 	           task-8-inclined-plane-friction-(unnamed-surfaces)  (162 variations)
    28: 	                    task-9-mendellian-genetics-(known-plant)  (120 variations)
    29: 	                  task-9-mendellian-genetics-(unknown-plant)  (480 variations)
 ```
 
+# Hardware requirements
+This code generally runs best with at least num_threads+1 CPU cores (e.g. about 10 cores for an 8-thread environment).
 
-# Old instructions
-Train TDQN:
-```bash
-cd tdqn/tdqn && python3 train.py --rom_path <path_to_your_rom_file>
-```
+The GPU memory requirements are variable, but generally stay below 8gb. 
 
-Train DRRN:
-```bash
-cd tdqn/drrn && python3 train.py --rom_path <path_to_your_rom_file>
-```
+
+# Known issues
+
+- *Many threads*: If you are attempting to use a large number of threads (e.g. 20+), you may need to add an additional several-second delay after the threads spawn before the rest of the program runs.  (The ScienceWorld API already adds a 5 second delay, which handles small numbers of threads well.) 
+
+- *Model saving with manys steps*: Very occassionally, on very long runs (generally 1M+ steps), the periodic pickling the model when saving checkpoints runs into issues and freezes.  The cause is unknown, but as a workaround the save has been wrapped in a timeout, so that if it takes longer than 2 minutes to save the model, the checkpoint is not saved and training continues.  Subsequent checkpoints usually save without issue.
+
 
 # Citing
 
-If these agents are helpful in your work, please cite the following:
+If this DRRN agent is helpful in your work, please cite the following:
 
 ```
 @article{hausknecht19colossal,
