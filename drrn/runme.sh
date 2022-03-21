@@ -1,1 +1,0 @@
-python3 train-scienceworld.py --num_envs=8 --max_steps=110 --task_idx=25 --simplification_str=easy --priority_fraction=0.50 --memory_size=100000 --env_step_limit=100 --log_freq=100 --checkpoint_freq=100000 --eval_freq=100 --seed=0 --maxHistoriesPerFile=1000 --historySavePrefix=savetemp/results-seed0 --eval_set=test
