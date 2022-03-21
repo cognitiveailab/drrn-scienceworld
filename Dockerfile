@@ -32,7 +32,7 @@ USER root:root
 WORKDIR /opt
 RUN wget http://nlp.stanford.edu/software/stanford-corenlp-full-2018-10-05.zip
 RUN apt-get update \
-   &&  apt-get install -y --no-install-recommends redis-server default-jre
+   &&  apt-get install -y --no-install-recommends default-jre
 RUN apt-get install -y --no-install-recommends unzip
 RUN  unzip stanford-corenlp-full-2018-10-05.zip \
    &&  mv $(ls -d stanford-corenlp-full-*/) corenlp \
@@ -45,9 +45,7 @@ COPY . /tdqn-scienceworld
 RUN pip install -r /tdqn-scienceworld/requirements.txt
 
 
-RUN pip3 install torch==1.10.1+cu113 torchvision==0.11.2+cu113 torchaudio==0.10.1+cu113 -f https://download.pytorch.org/whl/cu113/torch_stable.html
-
-RUN python -m spacy download en
+RUN pip3 install torch==1.10.1+cu113 -f https://download.pytorch.org/whl/cu113/torch_stable.html
 
 WORKDIR /
 
