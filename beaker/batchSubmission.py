@@ -10,8 +10,8 @@ description: sciworld-may31-drrn-8x100k-taskTASKID-seedSEEDNUM
 tasks:
   - name: sciworld-may31-drrn-8x100k-taskTASKID-seedSEEDNUM
     image:
-      beaker: peterj/sciworld-drrn2a
-    arguments: [python3, train1-sciworld.py, --num_envs=8, --max_steps=800000, --task_idx=TASKID, --var_idx=0, --simplification_str=easy, --priority_fraction=0.50, --memory_size=100000, --env_step_limit=100, --log_freq=100, --checkpoint_freq=100000, --eval_freq=2000, --seed=SEEDNUM, --maxHistoriesPerFile=1000, --historySavePrefix=/results1/drrn1/results-seedSEEDNUM]
+      beaker: peterj/sciworld-drrn2b
+    arguments: [python3, train-scienceworld.py, --num_envs=8, --max_steps=100000, --task_idx=TASKID, --simplification_str=easy, --priority_fraction=0.50, --memory_size=100000, --env_step_limit=100, --log_freq=100, --checkpoint_freq=100000, --eval_freq=2000, --seed=SEEDNUM, --maxHistoriesPerFile=1000, --historySavePrefix=/results1/drrn1/results-seedSEEDNUM]
     result:
       path: /results1/drrn1/
     resources:
