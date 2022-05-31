@@ -15,7 +15,10 @@ def sanitizeInfo(infoIn):
     for elem in infoIn['valid']:
         recastList.append(elem)
 
+    #print("SanitizeInfo:" + str(infoIn))
+
     info = {'moves': infoIn['moves'],
+            'reward': infoIn['reward'],
             'score': infoIn['score'],
             'look': infoIn['look'],
             'inv': infoIn['inv'],            

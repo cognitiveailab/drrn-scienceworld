@@ -6,4 +6,5 @@ tensorboardX==1.8
 torch==1.8.1
 py4j
 pyyaml
-scienceworld
+protobuf==3.19.4
+scienceworld>=1.0.0

@@ -44,11 +44,11 @@ EXPOSE 50022 50032 50042 50052 50062 50072 50082 50092 50102 50112 50122 50132 5
 COPY . /tdqn-scienceworld
 RUN pip install -r /tdqn-scienceworld/requirements.txt
 
-
 RUN pip3 install torch==1.10.1+cu113 -f https://download.pytorch.org/whl/cu113/torch_stable.html
 
 WORKDIR /
 
 ENV PYTHONPATH=/tdqn-scienceworld/drrn
 ENV HOME=""
+
 WORKDIR /tdqn-scienceworld/drrn
