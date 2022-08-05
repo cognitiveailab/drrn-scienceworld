@@ -10,7 +10,7 @@ from vec_env import VecEnv
 import random
 
 from scienceworld import ScienceWorldEnv, BufferedHistorySaver
-from vec_env import resetWithVariation, resetWithVariationTrain, resetWithVariationTest, initializeEnv
+from vec_env import resetWithVariation, resetWithVariationDev, resetWithVariationTest, initializeEnv, sanitizeInfo, sanitizeObservation
 
 
 def configure_logger(log_dir):
@@ -63,9 +63,15 @@ def evaluate_episode(agent, env, env_step_limit, simplificationStr, bufferedHist
     ob = ""
     info = {}
     if (evalSet == "dev"):
-        ob, info = resetWithVariationTest(env, simplificationStr)
+        ob, info = resetWithVariationDev(env, simplificationStr)
+        info = sanitizeInfo(info)
+        ob = sanitizeObservation(ob, info)
+
     elif (evalSet == "test"):
         ob, info = resetWithVariationTest(env, simplificationStr)
+        info = sanitizeInfo(info)
+        ob = sanitizeObservation(ob, info)
+
     else:
         print("evaluate_episode: unknown evaluation set (expected 'dev' or 'test', found: " + str(evalSet) + ")")
         env.shutdown()
@@ -96,6 +102,9 @@ def evaluate_episode(agent, env, env_step_limit, simplificationStr, bufferedHist
 
         log('Q-Values: {}'.format(s))
         ob, rew, done, info = env.step(action_str)
+        info = sanitizeInfo(info)
+        ob = sanitizeObservation(ob, info)
+
         
         log("Reward{}: {}, Score {}, Done {}".format(step, rew, info['score'], done))        
         step += 1
@@ -303,6 +312,9 @@ def interactive_run(env):
     while True:
         print(clean(ob), 'Reward', reward, 'Done', done, 'Valid', info)
         ob, reward, done, info = env.step(input())
+        info = sanitizeInfo(info)
+        ob = sanitizeObservation(ob, info)
+
 
 
 if __name__ == "__main__":
