@@ -212,7 +212,7 @@ def train(agent, envs, max_steps, update_freq, eval_freq, checkpoint_freq, log_f
             # Save model checkpoints
             agent.save("-steps" + str(stepsFunctional) + "-eps" + str(numEpisodes))
 
-        if step & flush_cache_freq == 0:
+        if step % flush_cache_freq == 0:
             # Keep the GPU memory low
             agent.clearGPUCache()
 
