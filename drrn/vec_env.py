@@ -3,7 +3,6 @@ from multiprocessing import Process, Pipe
 
 import numpy as np
 import random
-import time
 import sys
 
 #
@@ -21,7 +20,7 @@ def sanitizeInfo(infoIn):
             'reward': infoIn['reward'],
             'score': infoIn['score'],
             'look': infoIn['look'],
-            'inv': infoIn['inv'],            
+            'inv': infoIn['inv'],
             'valid': recastList,
             'taskDesc': infoIn['taskDesc']
         }
@@ -36,43 +35,43 @@ def sanitizeObservation(obsIn, infoIn):
 #
 # Reset the environment (with a new randomly selected variation)
 #
-def resetWithVariation(env, variationMin, variationMax, simplificationStr):    
-    variationIdx = random.randrange(variationMin, variationMax)          # train on range 0-20    
-    env.reset()        
+def resetWithVariation(env, variationMin, variationMax, simplificationStr):
+    variationIdx = random.randrange(variationMin, variationMax)          # train on range 0-20
+    env.reset()
     initialObs, initialDict = env.resetWithVariation(variationIdx, simplificationStr)
     print("Simplifications: " + env.getSimplificationsUsed() )
-    
+
     return initialObs, initialDict
 
 def resetWithVariationTrain(env, simplificationStr):
     variationIdx = env.getRandomVariationTrain()        ## Random variation on train
-    env.reset()    
+    env.reset()
     initialObs, initialDict = env.resetWithVariation(variationIdx, simplificationStr)
     print("Simplifications: " + env.getSimplificationsUsed() )
 
-    return initialObs, initialDict    
+    return initialObs, initialDict
 
 def resetWithVariationDev(env, simplificationStr):
     variationIdx = env.getRandomVariationDev()          ## Random variation on dev
-    env.reset()        
+    env.reset()
     initialObs, initialDict = env.resetWithVariation(variationIdx, simplificationStr)
     print("Simplifications: " + env.getSimplificationsUsed() )
-    
-    return initialObs, initialDict    
 
-def resetWithVariationTest(env, simplificationStr):    
+    return initialObs, initialDict
+
+def resetWithVariationTest(env, simplificationStr):
     variationIdx = env.getRandomVariationTest()        ## Random variation on test
-    env.reset()        
+    env.reset()
     initialObs, initialDict = env.resetWithVariation(variationIdx, simplificationStr)
     print("Simplifications: " + env.getSimplificationsUsed() )
-    
-    return initialObs, initialDict    
+
+    return initialObs, initialDict
 
 # Initialize a ScienceWorld environment directly from the API
-def initializeEnv(threadNum, args):    
-    env = ScienceWorldEnv("", None, args.env_step_limit, threadNum)
+def initializeEnv(args):
+    env = ScienceWorldEnv("", None, args.env_step_limit)
 
-    taskNames = env.getTaskNames()    
+    taskNames = env.getTaskNames()
     taskName = taskNames[args.task_idx]
 
     # Just reset to variation 0, as another call (e.g. resetWithVariation...) will setup an appropriate variation (train/dev/test)
@@ -87,68 +86,67 @@ def initializeEnv(threadNum, args):
 #
 #   Worker
 #
-def worker(remote, parent_remote, threadNum, args):
+def worker(remote, parent_remote, args):
     parent_remote.close()
-    print ("------------------------------------ NEW (Thread " + str(threadNum) + ")")
 
-    # Create unique thread
-    # Note, it doesn't matter what the variation is initially initialized to -- we reset it to a proper variation # (train/dev/test) before use. 
-    env = initializeEnv(threadNum = 100+threadNum, args=args)
+    # Create unique server instance
+    # Note, it doesn't matter what the variation is initially initialized to -- we reset it to a proper variation # (train/dev/test) before use.
+    env = initializeEnv(args=args)
+    port = env._gateway.gateway_parameters.port
+    print ("------------------------------------ NEW (Port: " + str(port) + ")")
 
     try:
         done = False
         while True:
             cmd, data = remote.recv()
-            if cmd == 'step':                
-                if done:                    
-                    # If the thread is done, reset it
-                    print("Thread " + str(threadNum) + " is DONE -- resetting with new variation")                    
+            if cmd == 'step':
+                if done:
+                    # If the server instance is done, reset it
+                    print("Port: " + str(port) + " is DONE -- resetting with new variation")
                     ob, info = resetWithVariationTrain(env, args.simplification_str)
-                    print("Thread " + str(threadNum) + " reset complete")
+                    print("Port: " + str(port) + " reset complete")
                     reward = 0
                     done = False
-                else:                    
+                else:
                     # Otherwise, complete one step
                     ob, reward, done, info = env.step(data)
-                    
+
                 # Sanitize the 'observation' and 'info' receieved from the API
                 info = sanitizeInfo(info)
                 ob = sanitizeObservation(ob, info)
 
-                # Make sure any stdout from this thread is printed to the console in a timely fashion
+                # Make sure any stdout from this server instance is printed to the console in a timely fashion
                 sys.stdout.flush()
 
                 if (done == True):
-                    print("DONE -- SCORE " + str(info['score']) + " (Thread " + str(threadNum) + ")")
+                    print("DONE -- SCORE " + str(info['score']) + " (Port " + str(port) + ")")
                     # If we're done, store history in 'info'
                     info['runHistory'] = env.getRunHistory()
-                
+
                 remote.send((ob, reward, done, info))
-                
+
             elif cmd == 'reset':
-                print ("------------------------------------ RESET (Thread " + str(threadNum) + ")")
-                ob, info = resetWithVariationTrain(env, args.simplification_str)                
+                print ("------------------------------------ RESET (Port " + str(port) + ")")
+                ob, info = resetWithVariationTrain(env, args.simplification_str)
                 info = sanitizeInfo(info)
                 ob = sanitizeObservation(ob, info)
-                
+
                 remote.send((ob, info))
 
             elif cmd == 'get_state':
-                print ("------------------------------------ GETSTATE (Thread " + str(threadNum) + ")")                
+                print ("------------------------------------ GETSTATE (Port " + str(port) + ")")
                 remote.send((env.env.get_state(), done))
-                
+
 
             elif cmd == 'set_state':
-                print ("------------------------------------ SETSTATE (Thread " + str(threadNum) + ")")
+                print ("------------------------------------ SETSTATE (Port " + str(port) + ")")
                 done = data[1]
-                env.env.set_state(data[0])                
+                env.env.set_state(data[0])
 
                 remote.send(True)
-                
+
             elif cmd == 'close':
-                print ("------------------------------------ CLOSE (Thread " + str(threadNum) + ")")
-                env.shutdown()  # Shut down ScienceWorld server for this thread
-                time.sleep(2)
+                print ("------------------------------------ CLOSE (Port " + str(port) + ")")
                 break
 
             else:
@@ -157,9 +155,7 @@ def worker(remote, parent_remote, threadNum, args):
     except KeyboardInterrupt:
         print('SubprocVecEnv worker: got KeyboardInterrupt')
     finally:
-        print ("------------------------------------ SHUTDOWN (Thread " + str(threadNum) + ")")
-        env.shutdown()  # Shut down ScienceWorld server for this thread
-        time.sleep(2)
+        print ("------------------------------------ SHUTDOWN (Port " + str(port) + ")")
 
 
 #
@@ -167,13 +163,12 @@ def worker(remote, parent_remote, threadNum, args):
 #
 class VecEnv:
     def __init__(self, num_envs, programArgs):
-        self.closed = False        
+        self.closed = False
         self.num_envs = num_envs
-        self.workerThreadNums = [x for x in range(num_envs)]        # A different thread number (0-numEnvs) for each worker thread, so the ScienceWorld servers spawn on different ports
 
         self.remotes, self.work_remotes = zip(*[Pipe() for _ in range(num_envs)])
-        self.ps = [Process(target=worker, args=(work_remote, remote, threadNum, programArgs))
-                   for (work_remote, remote, threadNum) in zip(self.work_remotes, self.remotes, self.workerThreadNums)]
+        self.ps = [Process(target=worker, args=(work_remote, remote, programArgs))
+                   for (work_remote, remote) in zip(self.work_remotes, self.remotes)]
         for p in self.ps:
             p.daemon = True  # if the main process crashes, we should not cause things to hang
             p.start()
@@ -218,8 +213,6 @@ class VecEnv:
         self.closed = True
         for remote in self.remotes:
             remote.send(('close', None))
-
-        time.sleep(5)
 
         for p in self.ps:
             p.join()
