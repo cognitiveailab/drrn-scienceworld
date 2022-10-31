@@ -1,6 +1,6 @@
 # DRRN Agent (Modified for ScienceWorld)
 
-This repository contains a reference implementation DRRN as mentioned in [Interactive Fiction Games: A Colossal Adventure](https://arxiv.org/abs/1909.05398), that has been modified for use with the [ScienceWorld](https://www.github.com/allenai/ScienceWorld) environment. 
+This repository contains a reference implementation DRRN as mentioned in [Interactive Fiction Games: A Colossal Adventure](https://arxiv.org/abs/1909.05398), that has been modified for use with the [ScienceWorld](https://www.github.com/allenai/ScienceWorld) environment.
 
 
 # Quickstart
@@ -12,20 +12,20 @@ git clone https://github.com/cognitiveailab/drrn-scienceworld.git
 cd drrn-scienceworld
 
 # Create conda environment
-conda create --name drrn1 python=3.8
-conda activate drrn1
+conda create --name drrn-scienceworld python=3.8
+conda activate drrn-scienceworld
 pip install -r requirements.txt
 
 ```
 
-An example of training the DRRN model (using 8 threads, for 10k training steps, evaluating on dev every 1k steps):
+An example of training the DRRN model (using 8 parallel envs, for 10k training steps, evaluating on dev every 1k steps):
 ```bash
 cd drrn
-python3 train-scienceworld.py --num_envs=8 --max_steps=10000 --task_idx=13 --simplification_str=easy --priority_fraction=0.50 --memory_size=100000 --env_step_limit=100 --eval_freq=1000 --eval_set=dev --historySavePrefix=drrn-task13-results-seed0-dev 
+python train-scienceworld.py --num_envs=8 --max_steps=10000 --task_idx=13 --simplification_str=easy --priority_fraction=0.50 --memory_size=100000 --env_step_limit=100 --eval_freq=1000 --eval_set=dev --historySavePrefix=drrn-task13-results-seed0-dev
 ```
 Here:
-- **max_steps:** Maximum number of steps to train for (per environment thread)
-- **num_envs:** The number of environment threads to simultaneously use during training (8 is a common number)
+- **max_steps:** Maximum number of steps to train for (per environment)
+- **num_envs:** The number of environments to simultaneously use during training (8 is a common number)
 - **task_idx:** The ScienceWorld task index (0-29). *See **task list** below*
 - **env_step_limit:** the maximum number of steps to run an environment for, before it times out and resets (100 typical)
 - **eval_freq:** the number of steps between evaluations
@@ -37,7 +37,7 @@ This configuration generally takes about 1-2 hours to run (to 10k steps).
 
 ## ScienceWorld Task List
 ```
-TASK LIST: 
+TASK LIST:
     0: 	                                                 task-1-boil  (30 variations)
     1: 	                        task-1-change-the-state-of-matter-of  (30 variations)
     2: 	                                               task-1-freeze  (30 variations)
@@ -71,14 +71,12 @@ TASK LIST:
 ```
 
 # Hardware requirements
-This code generally runs best with at least num_threads+1 CPU cores (e.g. about 10 cores for an 8-thread environment).
+This code generally runs best with at least num_envs+1 CPU cores.
 
-The GPU memory requirements are variable, but generally stay below 8gb. 
+The GPU memory requirements are variable, but generally stay below 8gb.
 
 
 # Known issues
-
-- *Many threads*: If you are attempting to use a large number of threads (e.g. 20+), you may need to add an additional several-second delay after the threads spawn before the rest of the program runs.  (The ScienceWorld API already adds a 5 second delay, which handles small numbers of threads well.) 
 
 - *Model saving with manys steps*: Very occassionally, on very long runs (generally 1M+ steps), the periodic pickling the model when saving checkpoints runs into issues and freezes.  The cause is unknown, but as a workaround the save has been wrapped in a timeout, so that if it takes longer than 2 minutes to save the model, the checkpoint is not saved and training continues.  Subsequent checkpoints usually save without issue.
 

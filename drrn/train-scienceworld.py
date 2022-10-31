@@ -29,17 +29,17 @@ def clean(strIn):
     return strIn.strip()
 
 
-def evaluate(agent, args, env_step_limit, bufferedHistorySaverEval, extraSaveInfo, nb_episodes=10):    
-    # Initialize a ScienceWorld thread for serial evaluation
-    env = initializeEnv(threadNum = args.num_envs+10, args=args) # A threadNum (and therefore port) that shouldn't be used by any of the regular training workers
+def evaluate(agent, args, env_step_limit, bufferedHistorySaverEval, extraSaveInfo, nb_episodes=10):
+    # Initialize a ScienceWorld server for serial evaluation
+    env = initializeEnv(args=args)
 
     scoresOut = []
     with torch.no_grad():
-        
+
         for ep in range(nb_episodes):
             total_score = 0
-            log("Starting evaluation episode {}".format(ep))   
-            print("Starting evaluation episode " + str(ep) + " / " + str(nb_episodes))         
+            log("Starting evaluation episode {}".format(ep))
+            print("Starting evaluation episode " + str(ep) + " / " + str(nb_episodes))
             extraSaveInfo['evalIdx'] = ep
             score = evaluate_episode(agent, env, env_step_limit, args.simplification_str, bufferedHistorySaverEval, extraSaveInfo, args.eval_set)
             log("Evaluation episode {} ended with score {}\n\n".format(ep, score))
@@ -48,12 +48,10 @@ def evaluate(agent, args, env_step_limit, bufferedHistorySaverEval, extraSaveInf
             print("")
 
         avg_score = total_score / nb_episodes
-        
-        env.shutdown()
-        
+
         return scoresOut, avg_score
 
-    
+
 
 
 def evaluate_episode(agent, env, env_step_limit, simplificationStr, bufferedHistorySaverEval, extraSaveInfo, evalSet):
@@ -74,22 +72,20 @@ def evaluate_episode(agent, env, env_step_limit, simplificationStr, bufferedHist
 
     else:
         print("evaluate_episode: unknown evaluation set (expected 'dev' or 'test', found: " + str(evalSet) + ")")
-        env.shutdown()
-
         exit(1)
 
 
     state = agent.build_state([ob], [info])[0]
-    log('Obs{}: {} Inv: {} Desc: {}'.format(step, clean(ob), clean(info['inv']), clean(info['look'])))    
+    log('Obs{}: {} Inv: {} Desc: {}'.format(step, clean(ob), clean(info['inv']), clean(info['look'])))
     while not done:
-        #print("numSteps: " + str(numSteps))        
+        #print("numSteps: " + str(numSteps))
         valid_acts = info['valid']
-        valid_ids = agent.encode(valid_acts)        
-        _, action_idx, action_values = agent.act([state], [valid_ids], sample=False)        
+        valid_ids = agent.encode(valid_acts)
+        _, action_idx, action_values = agent.act([state], [valid_ids], sample=False)
         action_idx = action_idx[0]
         action_values = action_values[0]
         action_str = valid_acts[action_idx]
-        log('Action{}: {}, Q-Value {:.2f}'.format(step, action_str, action_values[action_idx].item()))        
+        log('Action{}: {}, Q-Value {:.2f}'.format(step, action_str, action_values[action_idx].item()))
         s = ''
 
         maxToDisplay = 10   # Max Q values to display, to limit the log size
@@ -105,16 +101,16 @@ def evaluate_episode(agent, env, env_step_limit, simplificationStr, bufferedHist
         info = sanitizeInfo(info)
         ob = sanitizeObservation(ob, info)
 
-        
-        log("Reward{}: {}, Score {}, Done {}".format(step, rew, info['score'], done))        
+
+        log("Reward{}: {}, Score {}, Done {}".format(step, rew, info['score'], done))
         step += 1
         log('Obs{}: {} Inv: {} Desc: {}'.format(step, clean(ob), clean(info['inv']), clean(info['look'])))
-        state = agent.build_state([ob], [info])[0]        
+        state = agent.build_state([ob], [info])[0]
 
-        numSteps +=1        
+        numSteps +=1
         if (numSteps > env_step_limit):
             print("Maximum number of evaluation steps reached (" + str(env_step_limit) + ").")
-            break    
+            break
 
     print("Completed one evaluation episode")
     # Save
@@ -158,7 +154,7 @@ def train(agent, envs, max_steps, update_freq, eval_freq, checkpoint_freq, log_f
 
         # Choose action(s)
         action_ids, action_idxs, _ = agent.act(states, valid_ids)
-        action_strs = [info['valid'][idx] for info, idx in zip(infos, action_idxs)]        
+        action_strs = [info['valid'][idx] for info, idx in zip(infos, action_idxs)]
 
         # Perform the action(s) in the environment
         obs, rewards, dones, infos = envs.step(action_strs)
@@ -179,14 +175,14 @@ def train(agent, envs, max_steps, update_freq, eval_freq, checkpoint_freq, log_f
                 numEpisodes += 1
 
         next_states = agent.build_state(obs, infos)
-        next_valids = [agent.encode(info['valid']) for info in infos]        
+        next_valids = [agent.encode(info['valid']) for info in infos]
         for state, act, rew, next_state, valids, done in \
             zip(states, action_ids, rewards, next_states, next_valids, dones):
             agent.observe(state, act, rew, next_state, valids, done)
         states = next_states
         valid_ids = next_valids
 
-        if step % log_freq == 0:            
+        if step % log_freq == 0:
             tb.logkv('Step', step)
             tb.logkv('StepsFunctional', step*envs.num_envs)
             tb.logkv("FPS", int((step*envs.num_envs)/(time.time()-startTime)))
@@ -203,8 +199,8 @@ def train(agent, envs, max_steps, update_freq, eval_freq, checkpoint_freq, log_f
             print("GPU_mem:         " + str(agent.getMemoryUsage()))
             print("*************************")
 
-        if step % update_freq == 0:            
-            loss = agent.update()            
+        if step % update_freq == 0:
+            loss = agent.update()
             if loss is not None:
                 tb.logkv_mean('Loss', loss)
 
@@ -220,7 +216,7 @@ def train(agent, envs, max_steps, update_freq, eval_freq, checkpoint_freq, log_f
             # Do the evaluation procedure
             extraSaveInfo = {'numEpisodes':numEpisodes, 'numSteps':step, 'stepsFunctional:':stepsFunctional, 'maxHistoriesPerFile':args.maxHistoriesPerFile}
             eval_scores, avg_eval_score = evaluate(agent, args, args.env_step_limit, bufferedHistorySaverEval, extraSaveInfo)
-            
+
             tb.logkv('EvalScore', avg_eval_score)
             tb.logkv('numEpisodes', numEpisodes)
             tb.dumpkvs()
@@ -265,7 +261,7 @@ def parse_args():
     parser.add_argument('--embedding_dim', default=128, type=int)
     parser.add_argument('--hidden_dim', default=128, type=int)
 
-    parser.add_argument('--task_idx', default=0, type=int)    
+    parser.add_argument('--task_idx', default=0, type=int)
     parser.add_argument('--maxHistoriesPerFile', default=1000, type=int)
     parser.add_argument('--historySavePrefix', default='saveout', type=str)
 
@@ -281,7 +277,7 @@ def main():
     ## assert jericho.__version__ == '2.1.0', "This code is designed to be run with Jericho version 2.1.0."
     args = parse_args()
     print(args)
-    configure_logger(args.output_dir)    
+    configure_logger(args.output_dir)
     agent = DRRN_Agent(args)
 
     # Initialize a threaded wrapper for the ScienceWorld environment
