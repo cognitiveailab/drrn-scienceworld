@@ -73,14 +73,17 @@ class DRRN_Agent:
         """ Returns a state representation built from various info sources. """
         obs_ids = [self.sp.EncodeAsIds(o) for o in obs]
         # TextWorld
-        look_ids = [self.sp.EncodeAsIds(info['look']) for info in infos]
-        inv_ids = [self.sp.EncodeAsIds(info['inv']) for info in infos]
+        #look_ids = [self.sp.EncodeAsIds(info['look']) for info in infos]
+        #inv_ids = [self.sp.EncodeAsIds(info['inv']) for info in infos]
+        look_ids = [self.sp.EncodeAsIds(look) for look in infos['look']]
+        inv_ids = [self.sp.EncodeAsIds(inv) for inv in infos['inv']]
+
         # ScienceWorld
 
         #print("obs:")
         #print(obs)
         #print("infos:")
-        #print(infos)        
+        #print(infos)
         #look_ids = [self.sp.EncodeAsIds(info['look']) for info in infos]
         #inv_ids = [self.sp.EncodeAsIds(info['inv']) for info in infos]
 
@@ -146,11 +149,11 @@ class DRRN_Agent:
         print("Saving agent to path: " + str(self.save_path))
         print("Started saving at: " + str(startTime))
         sys.stdout.flush()
-        
+
         # First, remove any old backups
         print("Removing old backups")
         sys.stdout.flush()
-        try: 
+        try:
             files = os.listdir(self.save_path + "/bak")
             for filename in files:
                 if (filename.startswith("memory")) or (filename.startswith("model") or (filename.startswith("progress") or (filename.startswith("log")))):
@@ -167,9 +170,9 @@ class DRRN_Agent:
                 os.makedirs(self.save_path + "/bak", exist_ok=True)
                 files = os.listdir(self.save_path)
                 for filename in files:
-                    if filename.startswith("memory") or filename.startswith("model"):                
+                    if filename.startswith("memory") or filename.startswith("model"):
                         shutil.move(self.save_path + "/" + filename, self.save_path + "/bak/" + filename)
-                    if filename.startswith("progress") or filename.startswith("log"):                
+                    if filename.startswith("progress") or filename.startswith("log"):
                         shutil.copy(self.save_path + "/" + filename, self.save_path + "/bak/" + filename)
 
 
@@ -181,7 +184,7 @@ class DRRN_Agent:
 
             self.lastSaveSuccessful = False
             with timeout(120):
-                print("Pickle")            
+                print("Pickle")
                 print("Length: " + str(len(self.memory)) )
                 sys.stdout.flush()
                 pickle.dump(self.memory, open(pjoin(self.save_path, "memory" + str(suffixStr) + ".pkl"), 'wb'))
@@ -195,7 +198,7 @@ class DRRN_Agent:
             if (self.lastSaveSuccessful == False):
                 print("* Model failed to save (timeout).")
                 self.numSaveErrors += 1
-            
+
             print("Total number of save timeouts since running: " + str(self.numSaveErrors))
 
             sys.stdout.flush()

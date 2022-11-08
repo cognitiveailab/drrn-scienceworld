@@ -162,12 +162,12 @@ def worker(remote, parent_remote, args):
 #   VecEnv: Handles spawning up 'num_envs' workers.
 #
 class VecEnv:
-    def __init__(self, num_envs, programArgs):
+    def __init__(self, num_envs, programArgs, is_eval=False):
         self.closed = False
         self.num_envs = num_envs
 
         self.remotes, self.work_remotes = zip(*[Pipe() for _ in range(num_envs)])
-        self.ps = [Process(target=worker, args=(work_remote, remote, programArgs))
+        self.ps = [Process(target=worker, args=(work_remote, remote, programArgs, is_eval))
                    for (work_remote, remote) in zip(self.work_remotes, self.remotes)]
         for p in self.ps:
             p.daemon = True  # if the main process crashes, we should not cause things to hang

@@ -26,29 +26,29 @@ ENV LD_LIBRARY_PATH=/usr/local/nvidia/lib:/usr/local/nvidia/lib64
 ENV NVIDIA_VISIBLE_DEVICES=all
 ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility
 
-EXPOSE 5001 8883 8888 9000
-EXPOSE 25300-25600
+#EXPOSE 5001 8883 8888 9000
+#EXPOSE 25300-25600
 USER root:root
 WORKDIR /opt
-RUN wget http://nlp.stanford.edu/software/stanford-corenlp-full-2018-10-05.zip
+#RUN wget http://nlp.stanford.edu/software/stanford-corenlp-full-2018-10-05.zip
 RUN apt-get update \
    &&  apt-get install -y --no-install-recommends default-jre
-RUN apt-get install -y --no-install-recommends unzip
-RUN  unzip stanford-corenlp-full-2018-10-05.zip \
-   &&  mv $(ls -d stanford-corenlp-full-*/) corenlp \
-   &&  rm *.zip
-EXPOSE 5002-5100
-EXPOSE 5002 5003 5004 5005 5006 5007 5008 5009 5010 5011 5012 5013 5014 5015 5016 5017 5018
-EXPOSE 50022 50023 50024 50025 50026 50027 50028 50029 50030 50031 50032 50034 50035 50036 50037 50038 50039
-EXPOSE 50022 50032 50042 50052 50062 50072 50082 50092 50102 50112 50122 50132 50142 50152 50162 50172 50182
-COPY . /tdqn-scienceworld
-RUN pip install -r /tdqn-scienceworld/requirements.txt
+#RUN apt-get install -y --no-install-recommends unzip
+#RUN  unzip stanford-corenlp-full-2018-10-05.zip \
+#   &&  mv $(ls -d stanford-corenlp-full-*/) corenlp \
+#   &&  rm *.zip
+#EXPOSE 5002-5100
+#EXPOSE 5002 5003 5004 5005 5006 5007 5008 5009 5010 5011 5012 5013 5014 5015 5016 5017 5018
+#EXPOSE 50022 50023 50024 50025 50026 50027 50028 50029 50030 50031 50032 50034 50035 50036 50037 50038 50039
+#EXPOSE 50022 50032 50042 50052 50062 50072 50082 50092 50102 50112 50122 50132 50142 50152 50162 50172 50182
+COPY . /drrn-scienceworld
+RUN pip install -r /drrn-scienceworld/requirements.txt
 
 RUN pip3 install torch==1.10.1+cu113 -f https://download.pytorch.org/whl/cu113/torch_stable.html
 
 WORKDIR /
 
-ENV PYTHONPATH=/tdqn-scienceworld/drrn
+ENV PYTHONPATH=/drrn-scienceworld/drrn
 ENV HOME=""
 
-WORKDIR /tdqn-scienceworld/drrn
+WORKDIR /drrn-scienceworld/drrn

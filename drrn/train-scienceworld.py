@@ -1,13 +1,14 @@
-import subprocess
 import time
-import math
 import timeit
 import torch
 import logger
 import argparse
 from drrn import DRRN_Agent
-from vec_env import VecEnv
-import random
+import numpy as np
+
+import gymnasium as gym
+from gymnasium.wrappers import TimeLimit, AutoResetWrapper
+from functools import partial
 
 from scienceworld import ScienceWorldEnv, BufferedHistorySaver
 from vec_env import resetWithVariation, resetWithVariationDev, resetWithVariationTest, initializeEnv, sanitizeInfo, sanitizeObservation
@@ -16,112 +17,97 @@ from vec_env import resetWithVariation, resetWithVariationDev, resetWithVariatio
 def configure_logger(log_dir):
     logger.configure(log_dir, format_strs=['log'])
     global tb
-    tb = logger.Logger(log_dir, [logger.make_output_format('tensorboard', log_dir),
+    tb = logger.Logger(log_dir, [#logger.make_output_format('tensorboard', log_dir),
                                  logger.make_output_format('csv', log_dir),
-                                 logger.make_output_format('stdout', log_dir)])
+                                 #logger.make_output_format('stdout', log_dir)
+                                 ])
     global log
     log = logger.log
 
-def clean(strIn):
-    charsToFilter = ['\t', '\n', '*', '-']
-    for c in charsToFilter:
-        strIn = strIn.replace(c, ' ')
-    return strIn.strip()
+# def clean(strIn):
+#     charsToFilter = ['\t', '\n', '*', '-']
+#     for c in charsToFilter:
+#         strIn = strIn.replace(c, ' ')
+#     return strIn.strip()
 
 
-def evaluate(agent, args, env_step_limit, bufferedHistorySaverEval, extraSaveInfo, nb_episodes=10):
-    # Initialize a ScienceWorld server for serial evaluation
-    env = initializeEnv(args=args)
+def evaluate(agent, envs_eval, options_eval, args, bufferedHistorySaverEval, extraSaveInfo):
 
-    scoresOut = []
+    rng = np.random.default_rng(args.seed)
+    seeds = list(map(int, rng.integers(2**32, size=envs_eval.num_envs)))
     with torch.no_grad():
+        obs, infos = envs_eval.reset(seed=seeds, options=options_eval)
+        dones = np.array([False] * envs_eval.num_envs)
 
-        for ep in range(nb_episodes):
-            total_score = 0
-            log("Starting evaluation episode {}".format(ep))
-            print("Starting evaluation episode " + str(ep) + " / " + str(nb_episodes))
-            extraSaveInfo['evalIdx'] = ep
-            score = evaluate_episode(agent, env, env_step_limit, args.simplification_str, bufferedHistorySaverEval, extraSaveInfo, args.eval_set)
-            log("Evaluation episode {} ended with score {}\n\n".format(ep, score))
-            total_score += score
-            scoresOut.append(total_score)
-            print("")
+        #log("Starting evaluation")
+        while not np.all(dones):
+            # Encode state and valid actions.
+            states = agent.build_state(obs, infos)
+            valid_ids = [agent.encode(valid) for valid in infos['valid']]
 
-        avg_score = total_score / nb_episodes
+            # Choose actions
+            action_ids, action_idxs, _ = agent.act(states, valid_ids, sample=False)
+            action_strs = [valid[idx] for valid, idx in zip(infos['valid'], action_idxs)]
 
-        return scoresOut, avg_score
+            # Perform the actions in the environments
+            obs, rewards, terminateds, truncateds, infos = envs_eval.step(action_strs)
+            dones = np.logical_or(terminateds, truncateds)
 
+        print("Completed evaluation")
+        for runHistory, evalIdx in zip(infos["runHistory"], infos["variationIdx"]):
+            episodeIdx = str(extraSaveInfo["stepsFunctional"]) + "-" + str(evalIdx)
+            bufferedHistorySaverEval.storeRunHistory(runHistory, episodeIdx, notes=dict(extraSaveInfo))
+            bufferedHistorySaverEval.saveRunHistoriesBufferIfFull(maxPerFile=extraSaveInfo['maxHistoriesPerFile'])
 
-
-
-def evaluate_episode(agent, env, env_step_limit, simplificationStr, bufferedHistorySaverEval, extraSaveInfo, evalSet):
-    step = 0
-    done = False
-    numSteps = 0
-    ob = ""
-    info = {}
-    if (evalSet == "dev"):
-        ob, info = resetWithVariationDev(env, simplificationStr)
-        info = sanitizeInfo(info)
-        ob = sanitizeObservation(ob, info)
-
-    elif (evalSet == "test"):
-        ob, info = resetWithVariationTest(env, simplificationStr)
-        info = sanitizeInfo(info)
-        ob = sanitizeObservation(ob, info)
-
-    else:
-        print("evaluate_episode: unknown evaluation set (expected 'dev' or 'test', found: " + str(evalSet) + ")")
-        exit(1)
+        avg_score = np.mean(infos['score'])
+        return infos['score'], avg_score
 
 
-    state = agent.build_state([ob], [info])[0]
-    log('Obs{}: {} Inv: {} Desc: {}'.format(step, clean(ob), clean(info['inv']), clean(info['look'])))
-    while not done:
-        #print("numSteps: " + str(numSteps))
-        valid_acts = info['valid']
-        valid_ids = agent.encode(valid_acts)
-        _, action_idx, action_values = agent.act([state], [valid_ids], sample=False)
-        action_idx = action_idx[0]
-        action_values = action_values[0]
-        action_str = valid_acts[action_idx]
-        log('Action{}: {}, Q-Value {:.2f}'.format(step, action_str, action_values[action_idx].item()))
-        s = ''
+class SkipDone(gym.Wrapper):
 
-        maxToDisplay = 10   # Max Q values to display, to limit the log size
-        numDisplayed = 0
-        for idx, (act, val) in enumerate(sorted(zip(valid_acts, action_values), key=lambda x: x[1], reverse=True), 1):
-            s += "{}){:.2f} {} ".format(idx, val.item(), act)
-            numDisplayed += 1
-            if (numDisplayed > maxToDisplay):
-                break
+    def reset(self, **kwargs):
+        observation, info = self.env.reset(**kwargs)
+        self._last_state = None
+        self._is_done = False
+        return observation, info
 
-        log('Q-Values: {}'.format(s))
-        ob, rew, done, info = env.step(action_str)
-        info = sanitizeInfo(info)
-        ob = sanitizeObservation(ob, info)
+    def step(self, action):
+        if not self._is_done:
+            observation, reward, terminated, truncated, info = self.env.step(action)
+            self._is_done = terminated or truncated
+            info["_terminated"] = terminated
+            info["_truncated"] = truncated
 
+            terminated = truncated = False  # To avoid being autoreset.
+            self._last_state = (observation, reward, terminated, truncated, info)
 
-        log("Reward{}: {}, Score {}, Done {}".format(step, rew, info['score'], done))
-        step += 1
-        log('Obs{}: {} Inv: {} Desc: {}'.format(step, clean(ob), clean(info['inv']), clean(info['look'])))
-        state = agent.build_state([ob], [info])[0]
+        return self._last_state
 
-        numSteps +=1
-        if (numSteps > env_step_limit):
-            print("Maximum number of evaluation steps reached (" + str(env_step_limit) + ").")
-            break
+class PostProcessSkipDone(gym.vector.VectorWrapper):
 
-    print("Completed one evaluation episode")
-    # Save
-    runHistory = env.getRunHistory()
-    episodeIdx = str(extraSaveInfo['numEpisodes']) + "-" + str(extraSaveInfo['evalIdx'])
-    bufferedHistorySaverEval.storeRunHistory(runHistory, episodeIdx, notes=extraSaveInfo)
-    bufferedHistorySaverEval.saveRunHistoriesBufferIfFull(maxPerFile=extraSaveInfo['maxHistoriesPerFile'])
-    print("Completed saving")
+    def step(self, actions):
+        observations, rewards, terminateds, truncateds, infos = self.env.step(actions)
+        terminateds = infos["_terminated"]
+        truncateds = infos["_truncated"]
+        return observations, rewards, terminateds, truncateds, infos
 
 
-    return info['score']
+class SanitizeScienceWorld(gym.Wrapper):
+
+    def reset(self, **kwargs):
+        obs, info = self.env.reset(**kwargs)
+        obs = info['taskDesc'] + " OBSERVATION " + obs
+        info["runHistory"] = ""
+        return obs, info
+
+    def step(self, action):
+        obs, reward, terminated, truncated, info = self.env.step(action)
+        obs = info['taskDesc'] + " OBSERVATION " + obs
+        info["runHistory"] = ""
+        if terminated or truncated:
+            info["runHistory"] = self.env.unwrapped.env.getRunHistory()
+
+        return obs, reward, terminated, truncated, info
 
 
 def train(agent, envs, max_steps, update_freq, eval_freq, checkpoint_freq, log_freq, args, bufferedHistorySaverTrain, bufferedHistorySaverEval):
@@ -133,49 +119,77 @@ def train(agent, envs, max_steps, update_freq, eval_freq, checkpoint_freq, log_f
     stepsFunctional = 0
     start1 = timeit.default_timer()
 
+    # Initialize a threaded wrapper for the ScienceWorld environment
+    TimeLimitWrapper = partial(TimeLimit, max_episode_steps=args.env_step_limit)
+
+    envs_train = gym.make_vec(
+        "ScienceWorld-v0",
+        num_envs=args.num_envs,
+        vectorization_mode="async",
+        vector_kwargs={"shared_memory": False},
+        wrappers=[TimeLimitWrapper, SanitizeScienceWorld]
+    )
+    envs_eval = gym.make_vec(
+        "ScienceWorld-v0",
+        num_envs=10,
+        vectorization_mode="async",
+        vector_kwargs={"shared_memory": False},
+        wrappers=[TimeLimitWrapper, SanitizeScienceWorld, SkipDone]
+    )
+    envs_eval = PostProcessSkipDone(envs_eval)
+
+    options_train = {
+        "task": args.task_idx,
+        "variation": "train",
+        "simplification": args.simplification_str,
+    }
+    options_eval = {
+        "task": args.task_idx,
+        "variation": args.eval_set,
+        "simplification": args.simplification_str,
+    }
 
     # Reinit environments
-    obs, infos = envs.reset()
+    rng = np.random.default_rng(args.seed)
+    seeds = list(map(int, rng.integers(2**32, size=envs_train.num_envs)))
+    obs, infos = envs_train.reset(seed=seeds, options=options_train)
 
     states = agent.build_state(obs, infos)
-    valid_ids = [agent.encode(info['valid']) for info in infos]
+    valid_ids = [agent.encode(valid) for valid in infos['valid']]
+    loss = np.inf
     for step in range(1, max_steps+1):
-        stepsFunctional = step * envs.num_envs
+        stepsFunctional = step * envs_train.num_envs
 
         # Summary statistics
-        print("-------------------")
-        print("Step " + str(step))
-        print("")
+        #print("-------------------")
         end = timeit.default_timer()
         deltaTime = end - start1
         deltaTimeMins = deltaTime / 60
-        print("Started at runtime: " + str(deltaTime) + " seconds  (" + str(deltaTimeMins) + " minutes)")
-        print("")
+        print(f"Step {step}. Loss: {loss:.4f} ({deltaTimeMins:.2f} minutes)")
 
         # Choose action(s)
         action_ids, action_idxs, _ = agent.act(states, valid_ids)
-        action_strs = [info['valid'][idx] for info, idx in zip(infos, action_idxs)]
+        action_strs = [valid[idx] for valid, idx in zip(infos['valid'], action_idxs)]
 
         # Perform the action(s) in the environment
-        obs, rewards, dones, infos = envs.step(action_strs)
+        obs, rewards, terminateds, truncateds, infos = envs_train.step(action_strs)
+        dones = np.logical_or(terminateds, truncateds)
 
         # Check for any completed episodes
-        for done, info in zip(dones, infos):
+        for i, (done, score) in enumerate(zip(dones, infos['score'])):
             if done:
                 # An episode has completed
-                tb.logkv('EpisodeScore', info['score'])
-                print("EPISODE SCORE: " + str(info['score']))
-                print("EPISODE SCORE: " + str(info['score']) + " STEPS: " + str(step) + " STEPS (functional): " + str(stepsFunctional) + " EPISODES: " + str(numEpisodes))
+                tb.logkv('EpisodeScore', score)
+                print("EPISODE SCORE: " + str(score) + " STEPS: " + str(step) + " STEPS (functional): " + str(stepsFunctional) + " EPISODES: " + str(numEpisodes))
 
                 # Save the environment's history in the history logs
-                runHistory = info['runHistory']
-                bufferedHistorySaverTrain.storeRunHistory(runHistory, numEpisodes, notes={'step':step})
+                bufferedHistorySaverTrain.storeRunHistory(infos["final_info"][i]["runHistory"], numEpisodes, notes={'step':step})
                 bufferedHistorySaverTrain.saveRunHistoriesBufferIfFull(maxPerFile=args.maxHistoriesPerFile)
 
                 numEpisodes += 1
 
         next_states = agent.build_state(obs, infos)
-        next_valids = [agent.encode(info['valid']) for info in infos]
+        next_valids = [agent.encode(valid) for valid in infos['valid']]
         for state, act, rew, next_state, valids, done in \
             zip(states, action_ids, rewards, next_states, next_valids, dones):
             agent.observe(state, act, rew, next_state, valids, done)
@@ -184,16 +198,16 @@ def train(agent, envs, max_steps, update_freq, eval_freq, checkpoint_freq, log_f
 
         if step % log_freq == 0:
             tb.logkv('Step', step)
-            tb.logkv('StepsFunctional', step*envs.num_envs)
-            tb.logkv("FPS", int((step*envs.num_envs)/(time.time()-startTime)))
+            tb.logkv('StepsFunctional', stepsFunctional)
+            tb.logkv("FPS", int((stepsFunctional)/(time.time()-startTime)))
             tb.logkv('numEpisodes', numEpisodes)
             tb.logkv('taskIdx', args.task_idx)
             tb.logkv('GPU_mem', agent.getMemoryUsage())
 
             print("*************************")
             print("Step:            " + str(step))
-            print("StepsFunctional: " + str(step*envs.num_envs))
-            print("FPS:             " + str( (step*envs.num_envs)/(time.time()-startTime)) )
+            print("StepsFunctional: " + str(stepsFunctional))
+            print("FPS:             " + str(stepsFunctional/(time.time()-startTime)) )
             print("numEpisodes:     " + str(numEpisodes))
             print("taskIdx:         " + str(args.task_idx))
             print("GPU_mem:         " + str(agent.getMemoryUsage()))
@@ -203,6 +217,8 @@ def train(agent, envs, max_steps, update_freq, eval_freq, checkpoint_freq, log_f
             loss = agent.update()
             if loss is not None:
                 tb.logkv_mean('Loss', loss)
+            else:
+                loss = np.inf
 
         if step % checkpoint_freq == 0:
             # Save model checkpoints
@@ -214,18 +230,17 @@ def train(agent, envs, max_steps, update_freq, eval_freq, checkpoint_freq, log_f
 
         if step % eval_freq == 0:
             # Do the evaluation procedure
-            extraSaveInfo = {'numEpisodes':numEpisodes, 'numSteps':step, 'stepsFunctional:':stepsFunctional, 'maxHistoriesPerFile':args.maxHistoriesPerFile}
-            eval_scores, avg_eval_score = evaluate(agent, args, args.env_step_limit, bufferedHistorySaverEval, extraSaveInfo)
+            extraSaveInfo = {'numEpisodes':numEpisodes, 'numSteps':step, 'stepsFunctional':stepsFunctional, 'maxHistoriesPerFile':args.maxHistoriesPerFile}
+            eval_scores, avg_eval_score = evaluate(agent, envs_eval, options_eval, args, bufferedHistorySaverEval, extraSaveInfo)
 
             tb.logkv('EvalScore', avg_eval_score)
             tb.logkv('numEpisodes', numEpisodes)
             tb.dumpkvs()
 
             for eval_score in eval_scores:
-                print("EVAL EPISODE SCORE: " + str(eval_score))
-                print("EVAL EPISODE SCORE: " + str(eval_score) + " STEPS: " + str(step) + " STEPS: " + str(stepsFunctional) + " EPISODES: " + str(numEpisodes))
+                print("EVAL EPISODE SCORE: " + str(eval_score) + " STEPS: " + str(step) + " STEPS (functional): " + str(stepsFunctional) + " EPISODES: " + str(numEpisodes))
 
-            envs.reset()
+            envs_train.reset()
 
 
     # Save anything left in history buffers
@@ -236,24 +251,25 @@ def train(agent, envs, max_steps, update_freq, eval_freq, checkpoint_freq, log_f
     print("Training complete.")
     # Final save
     agent.save("-steps" + str(stepsFunctional) + "-eps" + str(numEpisodes))
+
     # Close environments
-    envs.close_extras()
+    #envs.close_extras()
+
 
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--output_dir', default='logs')
     parser.add_argument('--spm_path', default='../spm_models/unigram_8k.model')
-    parser.add_argument('--rom_path', default='zork1.z5')
     parser.add_argument('--env_step_limit', default=100, type=int)
-    parser.add_argument('--seed', default=0, type=int)
-    parser.add_argument('--num_envs', default=16, type=int)
+    parser.add_argument('--seed', default=20221108, type=int)
+    parser.add_argument('--num_envs', default=8, type=int)
     parser.add_argument('--max_steps', default=100000, type=int)
     parser.add_argument('--update_freq', default=1, type=int)
-    parser.add_argument('--checkpoint_freq', default=500, type=int)
-    parser.add_argument('--eval_freq', default=500, type=int)
+    parser.add_argument('--checkpoint_freq', default=5000, type=int)
+    parser.add_argument('--eval_freq', default=1000, type=int)
     parser.add_argument('--log_freq', default=100, type=int)
-    parser.add_argument('--memory_size', default=5000000, type=int)
-    parser.add_argument('--priority_fraction', default=0.0, type=float)
+    parser.add_argument('--memory_size', default=100000, type=int)
+    parser.add_argument('--priority_fraction', default=0.5, type=float)
     parser.add_argument('--batch_size', default=64, type=int)
     parser.add_argument('--gamma', default=.9, type=float)
     parser.add_argument('--learning_rate', default=0.0001, type=float)
@@ -263,35 +279,32 @@ def parse_args():
 
     parser.add_argument('--task_idx', default=0, type=int)
     parser.add_argument('--maxHistoriesPerFile', default=1000, type=int)
-    parser.add_argument('--historySavePrefix', default='saveout', type=str)
+    parser.add_argument('--historySavePrefix')
 
-    parser.add_argument('--eval_set', default='dev', type=str)      # 'dev' or 'test'
+    parser.add_argument('--eval_set', default='test', type=str)      # 'dev' or 'test'
 
-    parser.add_argument('--simplification_str', default='', type=str)
+    parser.add_argument('--simplification_str', default='easy', type=str)
 
     return parser.parse_args()
 
 
 
 def main():
-    ## assert jericho.__version__ == '2.1.0', "This code is designed to be run with Jericho version 2.1.0."
     args = parse_args()
     print(args)
     configure_logger(args.output_dir)
     agent = DRRN_Agent(args)
 
-    # Initialize a threaded wrapper for the ScienceWorld environment
-    envs = VecEnv(args.num_envs, args)
-
     # Initialize the save buffers
     taskIdx = args.task_idx
-    bufferedHistorySaverTrain = BufferedHistorySaver(filenameOutPrefix = args.historySavePrefix + "-task" + str(taskIdx) + "-train")
-    bufferedHistorySaverEval = BufferedHistorySaver(filenameOutPrefix = args.historySavePrefix + "-task" + str(taskIdx) + "-eval")
+    history_save_prefix = args.historySavePrefix or args.output_dir
+    bufferedHistorySaverTrain = BufferedHistorySaver(filenameOutPrefix=f"{history_save_prefix}/history-seed{args.seed}-task{taskIdx}-train")
+    bufferedHistorySaverEval = BufferedHistorySaver(filenameOutPrefix=f"{history_save_prefix}/history-seed{args.seed}-task{taskIdx}-{args.eval_set}")
 
     # Start training
     start = timeit.default_timer()
 
-    train(agent, envs, args.max_steps, args.update_freq, args.eval_freq,
+    train(agent, None, args.max_steps, args.update_freq, args.eval_freq,
           args.checkpoint_freq, args.log_freq, args, bufferedHistorySaverTrain, bufferedHistorySaverEval)
 
     end = timeit.default_timer()
@@ -301,15 +314,6 @@ def main():
 
     print("Rate: " + str(args.max_steps / deltaTime) + " steps/second")
     print("SimplificationStr: " + str(args.simplification_str))
-
-
-def interactive_run(env):
-    ob, info = env.reset()
-    while True:
-        print(clean(ob), 'Reward', reward, 'Done', done, 'Valid', info)
-        ob, reward, done, info = env.step(input())
-        info = sanitizeInfo(info)
-        ob = sanitizeObservation(ob, info)
 
 
 

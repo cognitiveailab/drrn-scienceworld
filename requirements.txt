@@ -7,4 +7,4 @@ torch==1.8.1
 py4j
 pyyaml
 protobuf==3.19.4
-scienceworld>=1.0.0
+scienceworld>=1.0.3rc2
